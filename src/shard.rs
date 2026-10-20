@@ -15,7 +15,7 @@ use arrow_array::{Array, ArrayRef, Int32Array, LargeStringArray, ListArray, Reco
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType, Field, Fields, Schema, SchemaRef};
 use parquet::arrow::arrow_reader::{ArrowReaderMetadata, ArrowReaderOptions, ParquetRecordBatchReaderBuilder};
-use parquet::arrow::arrow_writer::{compute_leaves, get_column_writers};
+use parquet::arrow::arrow_writer::{compute_leaves, ArrowRowGroupWriterFactory};
 use parquet::arrow::{add_encoded_arrow_schema_to_metadata, ArrowSchemaConverter, ProjectionMask};
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::column::writer::ColumnCloseResult;
@@ -222,7 +222,7 @@ fn arrow_select_concat(schema: &SchemaRef, batches: &[RecordBatch]) -> Result<Re
         let parts: Vec<_> = parts.iter().collect();
         let mut mutable = arrow_data::transform::MutableArrayData::new(parts, false, 0);
         for (k, b) in batches.iter().enumerate() {
-            mutable.extend(k, 0, b.num_rows());
+            mutable.try_extend(k, 0, b.num_rows())?;
         }
         columns.push(arrow_array::make_array(mutable.freeze()));
     }
@@ -308,6 +308,7 @@ impl Plan {
         }
         let out = File::create(dst).with_context(|| format!("create {}", dst.display()))?;
         let mut writer = SerializedFileWriter::new(out, self.parquet.root_schema_ptr(), self.properties.clone())?;
+        let factory = ArrowRowGroupWriterFactory::new(&writer, self.schema.clone());
         for group in 0..meta.metadata().num_row_groups() {
             let group_meta = meta.metadata().row_group(group);
             let batch = read_group(&file, &meta, group, roots)?;
@@ -315,7 +316,7 @@ impl Plan {
             for (index, array) in make(&batch)? {
                 arrays[index] = Some(array);
             }
-            let mut encoders = get_column_writers(&self.parquet, &self.properties, &self.schema)?;
+            let mut encoders = factory.create_column_writers(group)?;
             let mut chunks: Vec<Option<_>> = (0..encoders.len()).map(|_| None).collect();
             let mut leaf = 0;
             let mut copies = Vec::new();

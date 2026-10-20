@@ -61,7 +61,7 @@ jobs:
       fail-fast: false
       matrix:
         # The oldest version is the rust-version of Cargo.toml.
-        rust: ['1.85', stable]
+        rust: ['1.88', stable]
     steps:
       # Pinned to a commit, because a tag can be moved to other code.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
