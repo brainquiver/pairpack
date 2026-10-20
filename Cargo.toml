@@ -22,7 +22,7 @@ arrow-data = "56"
 arrow-schema = "56"
 clap = { version = "4", features = ["derive"] }
 mimalloc = { version = "0.1", default-features = false }
-parquet = { version = "56", features = ["arrow"] }
+parquet = { version = "60", features = ["arrow"] }
 rayon = "1.11"
 serde_json = "1"
 
