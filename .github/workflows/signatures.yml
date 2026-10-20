@@ -1,0 +1,36 @@
+name: Signatures
+
+# Every commit in a pull request must have a verified signature.
+# The signed commits rule in the ruleset only covers main, so this checks the branch.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: signatures-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  signatures:
+    name: Signatures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          unsigned=$(gh api "repos/$REPO/pulls/$PR/commits" --paginate \
+            --jq '.[] | select(.commit.verification.verified | not) | "\(.sha[0:7]) \(.commit.verification.reason)"')
+          if [ -n "$unsigned" ]; then
+            echo "Commits without a verified signature:"
+            echo "$unsigned"
+            exit 1
+          fi
+          echo "Each commit of the pull request carries a verified signature."
