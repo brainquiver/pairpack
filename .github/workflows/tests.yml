@@ -1,0 +1,94 @@
+name: Tests
+
+# The unit tests. They need no account, so they run on every pull request, from a fork too, and on each push to
+# main. A push to another branch waits for its pull request, because a branch here with a pull request would
+# otherwise run twice.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # A change to documents alone skips the unit jobs. A test reads README.md, so the readme counts as code. Every
+  # other .md file and the LICENSE count as documents.
+  changes:
+    name: Changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      # Pinned to a commit, because a tag can be moved to other code.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The parent of the merge commit of a pull request is the tip of main, and so is the parent of a squash
+          # merge on main. One diff then serves both events.
+          fetch-depth: 2
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          code=false
+          if [ "$EVENT" != pull_request ] && [ "$EVENT" != push ]; then code=true; fi
+          files=$(git diff --name-only HEAD^1 HEAD) || code=true
+          [ -n "$files" ] || code=true
+          while IFS= read -r file; do
+            case "$file" in
+              README.md) code=true ;;
+              *.md | LICENSE) ;;
+              *) code=true ;;
+            esac
+          done <<< "$files"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Changed files:"; echo "$files"; echo "Code changed: $code"
+
+  unit:
+    # GitHub adds the matrix value to this name, as Unit (stable).
+    name: Unit
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest version is the rust-version of Cargo.toml.
+        rust: ['1.85', stable]
+    steps:
+      # Pinned to a commit, because a tag can be moved to other code.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The runner image holds rustup, and no third-party action is needed for the toolchain.
+      - run: rustup toolchain install ${{ matrix.rust }} --profile minimal --component rustfmt,clippy && rustup default ${{ matrix.rust }}
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  # The ruleset requires this job, and not the unit jobs. A workflow that a path filter skips leaves its required
+  # checks waiting, and a skipped matrix job does not report the names of its matrix. This job reports in both cases:
+  # it passes when the code changed and every unit job passed, or when only documents changed and the unit jobs were
+  # skipped.
+  gate:
+    name: Tests
+    needs: [changes, unit]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - env:
+          CHANGES: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+          RESULT: ${{ needs.unit.result }}
+        run: |
+          echo "Changes: $CHANGES. Code changed: $CODE. unit: $RESULT."
+          [ "$CHANGES" = success ]
+          if [ "$CODE" = true ]; then [ "$RESULT" = success ]; else [ "$RESULT" = skipped ]; fi
