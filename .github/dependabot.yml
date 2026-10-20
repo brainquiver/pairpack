@@ -11,9 +11,11 @@ updates:
       prefix: build
       include: scope
     groups:
-      # arrow and parquet pin each other's exact version, so every update of them arrives together, majors too.
+      # arrow and parquet pin each other's exact version, so every update of them arrives together, majors too. The
+      # crates are named one by one: a glob left the arrow crates out of the group on the first run.
       arrow:
-        patterns: ['arrow*', 'parquet']
+        patterns: ['arrow-array', 'arrow-buffer', 'arrow-data', 'arrow-schema', 'parquet']
+        update-types: [major, minor, patch]
       production:
         dependency-type: production
         update-types: [minor, patch]
