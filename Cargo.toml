@@ -18,7 +18,7 @@ path = "src/main.rs"
 anyhow = "1"
 arrow-array = "56"
 arrow-buffer = "56"
-arrow-data = "56"
+arrow-data = "60"
 arrow-schema = "56"
 clap = { version = "4", features = ["derive"] }
 mimalloc = { version = "0.1", default-features = false }
